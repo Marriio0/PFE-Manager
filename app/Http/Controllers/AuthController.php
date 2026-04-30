@@ -12,12 +12,15 @@ class AuthController extends Controller
 {
     public function register(Request $request)
     {
+        $role = $request->input('role');
+        $needsInvite = in_array($role, ['encadrant', 'jury']);
+
         $validated = $request->validate([
             'nom'                   => 'required|string|max:255',
             'email'                 => 'required|email|unique:users,email',
             'password'              => 'required|string|min:6|confirmed',
             'role'                  => 'required|in:etudiant,encadrant,jury',
-            'invite_code'           => 'required|string',
+            'invite_code'           => $needsInvite ? 'required|string' : 'nullable|string',
             'cne'                   => 'nullable|string|max:50',
             'filiere'               => 'nullable|string|max:255',
             'niveau'                => 'nullable|string|max:100',
@@ -25,22 +28,24 @@ class AuthController extends Controller
             'departement'           => 'nullable|string|max:255',
         ]);
 
-        // Vérifier le code d'invitation
-        $invite = InviteCode::where('code', $validated['invite_code'])
-                            ->where('used', false)
-                            ->first();
+        // Vérifier le code d'invitation (seulement pour encadrant et jury)
+        $invite = null;
+        if ($needsInvite) {
+            $invite = InviteCode::where('code', $validated['invite_code'])
+                                ->where('used', false)
+                                ->first();
 
-        if (!$invite) {
-            return response()->json([
-                'errors' => ['invite_code' => ['Code d\'invitation invalide ou déjà utilisé.']]
-            ], 422);
-        }
+            if (!$invite) {
+                return response()->json([
+                    'errors' => ['invite_code' => ['Code d\'invitation invalide ou déjà utilisé.']]
+                ], 422);
+            }
 
-        // Vérifier que le code correspond au rôle demandé
-        if ($invite->role !== $validated['role']) {
-            return response()->json([
-                'errors' => ['invite_code' => ['Ce code n\'est pas valide pour le rôle "' . $validated['role'] . '".']]
-            ], 422);
+            if ($invite->role !== $validated['role']) {
+                return response()->json([
+                    'errors' => ['invite_code' => ['Ce code n\'est pas valide pour le rôle "' . $validated['role'] . '".']]
+                ], 422);
+            }
         }
 
         // Créer le compte en "pending"
@@ -57,8 +62,10 @@ class AuthController extends Controller
             'departement' => $validated['departement'] ?? null,
         ]);
 
-        // Marquer le code comme utilisé
-        $invite->update(['used' => true, 'used_by' => $user->id]);
+        // Marquer le code comme utilisé (encadrant/jury uniquement)
+        if ($invite) {
+            $invite->update(['used' => true, 'used_by' => $user->id]);
+        }
 
         return response()->json([
             'message' => 'Compte créé avec succès. En attente d\'approbation par l\'administrateur.',
