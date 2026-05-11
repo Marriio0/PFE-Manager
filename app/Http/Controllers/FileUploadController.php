@@ -14,9 +14,13 @@ class FileUploadController extends Controller
 
         $path = $request->file('file')->store('rapports', 'public');
 
+        // Utiliser l'URL de la requête pour supporter ngrok/proxies
+        $baseUrl = rtrim($request->getSchemeAndHttpHost(), '/');
+        $fileUrl = $baseUrl . '/storage/' . $path;
+
         return response()->json([
             'message' => 'Fichier uploadé avec succès',
-            'file_url' => asset('storage/' . $path),
+            'file_url' => $fileUrl,
         ]);
     }
 }
